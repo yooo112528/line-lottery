@@ -25,7 +25,7 @@
     <h1>VIP 尊榮抽獎活動</h1>
     
     <div id="auth-section">
-        <p style="color: #718096;">透過 LINE 安全登入中，請稍候...</p>
+        <p style="color: #718096;" id="loading-text">透過 LINE 安全連線中，請稍候...</p>
     </div>
 
     <div id="lottery-section" style="display: none;">
@@ -44,58 +44,64 @@
 </div>
 
 <script>
+    // 核對無誤的連線資訊
     const LIFF_ID = '2007048842-6GCYVWk0'; 
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbwnBBkMhmv1Ax9NM9CIOjSL4fbBlpXt6p1G0NItyXjugoikT5swDoG1FVZ02h5fD_LXyw/exec';  
 
     let userProfile = {};
 
-    // 溫和的初始化：拔除彈窗攔截，不強制綁定 LINE 環境
-    async function initLiff() {
-        try {
-            await liff.init({ liffId: LIFF_ID });
-            if (!liff.isLoggedIn()) {
-                liff.login(); 
-            } else {
-                userProfile = await liff.getProfile(); 
-                document.getElementById('auth-section').style.display = 'none';
-                document.getElementById('lottery-section').style.display = 'block';
-                document.getElementById('user-name').innerText = userProfile.displayName;
-                checkChances(); 
-            }
-        } catch (error) {
-            console.error('LIFF 初始化失敗', error);
-            // 拔除原本的 alert 攔截，改用頁面文字提示，防止相容性問題
-            document.getElementById('auth-section').innerHTML = '<p style="color: #e53e3e; font-weight: bold;">連線環境初始化中，請重新整理網頁再試一次。</p>';
-        }
+    // 真正的標準相容初始化流程
+    function initLiff() {
+        liff.init({ liffId: LIFF_ID })
+            .then(() => {
+                // 初始化成功後，判斷是否已登入
+                if (!liff.isLoggedIn()) {
+                    // 沒登入就強制引導至 LINE 授權登入畫面（此步能相容一般瀏覽器）
+                    liff.login();
+                } else {
+                    // 已登入，順利抓取用戶資料
+                    liff.getProfile()
+                        .then(profile => {
+                            userProfile = profile;
+                            document.getElementById('auth-section').style.display = 'none';
+                            document.getElementById('lottery-section').style.display = 'block';
+                            document.getElementById('user-name').innerText = userProfile.displayName;
+                            checkChances(); // 呼叫試算表查詢次數
+                        })
+                        .catch(err => {
+                            console.error('抓取 Profile 失敗', err);
+                            document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">無法取得 LINE 帳號資料，請重新整理。</span>';
+                        });
+                }
+            })
+            .catch((error) => {
+                console.error('LIFF 初始化失敗', error);
+                document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">連線發送錯誤。請確保由 LINE App 內開啟，或檢查您的 LIFF ID 是否正確。</span>';
+            });
     }
 
-    // 查詢次數
-    async function checkChances() {
-        try {
-            const response = await fetch(GAS_URL, {
-                method: 'POST',
-                body: JSON.stringify({
-                    action: 'check',
-                    uid: userProfile.userId,
-                    displayName: userProfile.displayName
-                })
-            });
-            const data = await response.json();
+    // 向試算表檢查次數
+    function checkChances() {
+        fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'check',
+                uid: userProfile.userId,
+                displayName: userProfile.displayName
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
             if (data.success) {
                 document.getElementById('chance-count').innerText = data.remainChances;
-                if (data.remainChances <= 0) {
-                    document.getElementById('draw-btn').disabled = true;
-                } else {
-                    document.getElementById('draw-btn').disabled = false;
-                }
+                document.getElementById('draw-btn').disabled = data.remainChances <= 0;
             }
-        } catch (err) {
-            console.error('檢查次數連線失敗', err);
-        }
+        })
+        .catch(err => console.error('檢查次數失敗', err));
     }
 
-    // 執行開獎
-    async function executeDraw() {
+    // 抽獎邏輯
+    function executeDraw() {
         const drawBtn = document.getElementById('draw-btn');
         const loadingMsg = document.getElementById('loading-msg');
         const resultDiv = document.getElementById('result');
@@ -105,19 +111,17 @@
         resultDiv.innerText = '';
         resultDiv.style.background = 'none';
 
-        try {
-            const response = await fetch(GAS_URL, {
-                method: 'POST',
-                body: JSON.stringify({
-                    action: 'draw',
-                    uid: userProfile.userId,
-                    displayName: userProfile.displayName
-                })
-            });
-            const data = await response.json();
-            
+        fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'draw',
+                uid: userProfile.userId,
+                displayName: userProfile.displayName
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
             loadingMsg.style.display = 'none';
-            
             if (data.success) {
                 if (data.result === "銘謝惠顧") {
                     resultDiv.innerText = `😢 銘謝惠顧，下次好運就臨門！`;
@@ -128,18 +132,18 @@
                     resultDiv.style.color = '#e53e3e';
                     resultDiv.style.background = '#fff5f5';
                 }
-                
                 document.getElementById('chance-count').innerText = data.remainChances;
                 if (data.remainChances > 0) drawBtn.disabled = false;
             } else {
                 alert(data.msg);
                 resultDiv.innerText = data.msg;
             }
-        } catch (error) {
+        })
+        .catch(error => {
             loadingMsg.style.display = 'none';
             drawBtn.disabled = false;
-            alert('網路不穩或伺服器超時，請重新再試一次');
-        }
+            alert('網路超時，請重試一次');
+        });
     }
 
     window.onload = initLiff;
