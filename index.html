@@ -24,12 +24,12 @@
     <h1>燒酒海報抽獎活動</h1>
     
     <div id="auth-section">
-        <p style="color: #718096;" id="loading-text">安全通道建立中，請稍候...</p>
+        <p style="color: #718096;">安全連線中，請稍候...</p>
     </div>
 
     <div id="lottery-section" style="display: none;">
         <div class="user-info">
-            歡迎回來，<span id="user-name" style="font-weight:bold; color:#2b6cb0;">---</span> 貴賓
+            歡迎回來，<span id="user-name" style="font-weight:bold; color:#2b6cb0;">貴賓</span>
         </div>
         <div class="status-box">
             您目前的剩餘抽獎次數：<span id="chance-count">0</span> 次
@@ -46,64 +46,32 @@
     const LIFF_ID = '2007048842-6GCYVWk0'; 
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbwnBBkMhmv1Ax9NM9CIOjSL4fbBlpXt6p1G0NItyXjugoikT5swDoG1FVZ02h5fD_LXyw/exec';  
 
-    let userProfile = {};
+    let myUid = "U_GUEST";
 
-    // 【終極安全鎖機制】：用程式動態去抓取連線庫，生出來之後才允許往下走
-    function loadLiffSDK(callback) {
-        var script = document.createElement('script');
-        script.type = 'text/javascript';
-        // 同時引入 cdnjs 作為最速緩衝
-        script.src = "https://cdnjs.cloudflare.com/ajax/libs/liff/2.21.4/sdk.js";
-        
-        script.onload = function() {
-            console.log("LINE SDK 載入成功");
-            callback();
-        };
-        
-        script.onerror = function() {
-            // 萬一 cdnjs 被擋，立刻自動切換回 LINE 官方原廠備用通道，雙層防護！
-            console.log("cdnjs 被阻擋，啟動官方備用通道...");
-            var backupScript = document.createElement('script');
-            backupScript.src = "https://static.liff.line.me/edge/2/sdk.js";
-            backupScript.onload = callback;
-            backupScript.onerror = function() {
-                document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">當前網路環境正在阻擋 LINE 伺服器，請切換手機 4G/5G 訊號再試。</span>';
-            };
-            document.head.appendChild(backupScript);
-        };
-        
-        document.head.appendChild(script);
-    }
+    function runPureLogic() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
 
-    // 真正的初始化核心流程
-    function startLiffProcess() {
-        if (typeof liff === "undefined") {
-            document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">大腦元件未就緒，正在重新整理連線...</span>';
-            window.location.reload();
+        // 如果網址沒有帶 code，代表完全沒登入過，強制轉跳到 LINE 登入頁面
+        if (!code) {
+            var clientId = LIFF_ID.split("-")[0];
+            var redirectUri = encodeURIComponent(window.location.href.split('?')[0]);
+            var lineAuthUrl = "https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=" 
+                + clientId + "&redirect_uri=" + redirectUri + "&state=secure_lottery_auth&scope=profile%20openid";
+            window.location.href = lineAuthUrl;
             return;
         }
 
-        liff.init({ liffId: LIFF_ID })
-            .then(() => {
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                } else {
-                    liff.getProfile()
-                        .then(profile => {
-                            userProfile = profile; 
-                            document.getElementById('auth-section').style.display = 'none';
-                            document.getElementById('lottery-section').style.display = 'block';
-                            document.getElementById('user-name').innerText = userProfile.displayName;
-                            checkChances();
-                        })
-                        .catch(err => {
-                            document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">身分讀取失敗，請重新整理。</span>';
-                        });
-                }
-            })
-            .catch((error) => {
-                document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">安全連線初始化失敗。</span>';
-            });
+        // 走到這裡，代表手機已經成功從 LINE 總部登入回來了！
+        // 我們直接拿網址上的 code 作為去試算表對帳的唯一鑰匙
+        myUid = code;
+
+        // 隱藏讀取中，直接顯示抽獎畫面
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('lottery-section').style.display = 'block';
+
+        // 直接向試算表查詢抽獎次數
+        checkChances();
     }
 
     function checkChances() {
@@ -111,8 +79,8 @@
             method: 'POST',
             body: JSON.stringify({
                 action: 'check',
-                uid: userProfile.userId,
-                displayName: userProfile.displayName
+                uid: myUid,
+                displayName: "貴賓"
             })
         })
         .then(res => res.json())
@@ -139,8 +107,8 @@
             method: 'POST',
             body: JSON.stringify({
                 action: 'draw',
-                uid: userProfile.userId,
-                displayName: userProfile.displayName
+                uid: myUid,
+                displayName: "貴賓"
             })
         })
         .then(res => res.json())
@@ -170,10 +138,8 @@
         });
     }
 
-    // 網頁一載入，先強迫執行安全鎖機制，確保 SDK 完好才啟動核心
-    window.onload = function() {
-        loadLiffSDK(startLiffProcess);
-    };
+    // 網頁一打開，直接執行我們的純手工核心，完全不向外下載任何東西
+    window.onload = runPureLogic;
 </script>
 </body>
 </html>
