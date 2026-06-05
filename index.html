@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VIP 專屬幸運抽獎</title>
-    <!-- 引入 LINE 官方 LIFF SDK -->
     <script src="https://static.liff.line.me/edge/2/sdk.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f8f9fa; text-align: center; padding: 20px; margin: 0; }
@@ -25,12 +24,10 @@
 <div class="container">
     <h1>VIP 尊榮抽獎活動</h1>
     
-    <!-- LINE 登入中提示區塊 -->
     <div id="auth-section">
         <p style="color: #718096;">透過 LINE 安全登入中，請稍候...</p>
     </div>
 
-    <!-- 主要抽獎核心區塊 -->
     <div id="lottery-section" style="display: none;">
         <div class="user-info">
             歡迎回來，<span id="user-name" style="font-weight:bold; color:#2b6cb0;">---</span> 貴賓
@@ -47,33 +44,32 @@
 </div>
 
 <script>
-    // ================== [ 系統連線設定已自動完美填入 ] ==================
     const LIFF_ID = '2007048842-6GCYVWk0'; 
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbwnBBkMhmv1Ax9NM9CIOjSL4fbBlpXt6p1G0NItyXjugoikT5swDoG1FVZ02h5fD_LXyw/exec';  
-    // =========================================================================
 
     let userProfile = {};
 
-    // 初始化 LINE LIFF 串接環境
+    // 溫和的初始化：拔除彈窗攔截，不強制綁定 LINE 環境
     async function initLiff() {
         try {
             await liff.init({ liffId: LIFF_ID });
             if (!liff.isLoggedIn()) {
-                liff.login(); // 若沒登入引導登入
+                liff.login(); 
             } else {
-                userProfile = await liff.getProfile(); // 取得用戶資訊
+                userProfile = await liff.getProfile(); 
                 document.getElementById('auth-section').style.display = 'none';
                 document.getElementById('lottery-section').style.display = 'block';
                 document.getElementById('user-name').innerText = userProfile.displayName;
-                checkChances(); // 查詢次數
+                checkChances(); 
             }
         } catch (error) {
             console.error('LIFF 初始化失敗', error);
-            alert('系統阻擋：請於 LINE App 行動裝置環境內開啟此網頁。');
+            // 拔除原本的 alert 攔截，改用頁面文字提示，防止相容性問題
+            document.getElementById('auth-section').innerHTML = '<p style="color: #e53e3e; font-weight: bold;">連線環境初始化中，請重新整理網頁再試一次。</p>';
         }
     }
 
-    // 呼叫 GAS 檢查該名客戶的賸餘抽獎次數
+    // 查詢次數
     async function checkChances() {
         try {
             const response = await fetch(GAS_URL, {
@@ -98,13 +94,12 @@
         }
     }
 
-    // 發送請求執行開獎邏輯
+    // 執行開獎
     async function executeDraw() {
         const drawBtn = document.getElementById('draw-btn');
         const loadingMsg = document.getElementById('loading-msg');
         const resultDiv = document.getElementById('result');
         
-        // 進入開獎狀態，鎖定按鈕防連擊
         drawBtn.disabled = true;
         loadingMsg.style.display = 'block';
         resultDiv.innerText = '';
@@ -124,7 +119,6 @@
             loadingMsg.style.display = 'none';
             
             if (data.success) {
-                // 處理開獎視覺呈現
                 if (data.result === "銘謝惠顧") {
                     resultDiv.innerText = `😢 銘謝惠顧，下次好運就臨門！`;
                     resultDiv.style.color = '#718096';
@@ -135,10 +129,7 @@
                     resultDiv.style.background = '#fff5f5';
                 }
                 
-                // 即時刷新畫面上的剩餘次數
                 document.getElementById('chance-count').innerText = data.remainChances;
-                
-                // 如果還有機會，解鎖按鈕讓客人可以繼續抽
                 if (data.remainChances > 0) drawBtn.disabled = false;
             } else {
                 alert(data.msg);
