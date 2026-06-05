@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIP 專屬幸運抽獎</title>
+    <!-- 引入 LINE 官方 LIFF SDK -->
+    <script src="https://static.liff.line.me/edge/2/sdk.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f8f9fa; text-align: center; padding: 20px; margin: 0; }
+        .container { max-width: 450px; margin: 40px auto; background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        h1 { color: #2c3e50; font-size: 24px; margin-bottom: 25px; font-weight: bold; }
+        .user-info { margin: 20px 0; font-size: 16px; color: #4a5568; background: #edf2f7; padding: 12px; border-radius: 8px; }
+        .status-box { font-size: 18px; font-weight: bold; color: #e53e3e; margin: 25px 0; }
+        .btn-draw { background: #38a169; color: white; border: none; padding: 16px 40px; font-size: 18px; font-weight: bold; border-radius: 50px; cursor: pointer; transition: background 0.2s, transform 0.1s; width: 100%; max-width: 280px; box-shadow: 0 4px 6px rgba(56, 161, 105, 0.2); }
+        .btn-draw:hover { background: #2f855a; }
+        .btn-draw:active { transform: scale(0.98); }
+        .btn-draw:disabled { background: #cbd5e0; cursor: not-allowed; box-shadow: none; transform: none; }
+        .result-display { margin-top: 30px; font-size: 22px; font-weight: bold; min-height: 60px; padding: 12px; border-radius: 8px; transition: all 0.3s; }
+        .loading { display: none; color: #3182ce; font-weight: bold; margin: 15px 0; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>VIP 尊榮抽獎活動</h1>
+    
+    <!-- LINE 登入中提示區塊 -->
+    <div id="auth-section">
+        <p style="color: #718096;">透過 LINE 安全登入中，請稍候...</p>
+    </div>
+
+    <!-- 主要抽獎核心區塊 -->
+    <div id="lottery-section" style="display: none;">
+        <div class="user-info">
+            歡迎回來，<span id="user-name" style="font-weight:bold; color:#2b6cb0;">---</span> 貴賓
+        </div>
+        <div class="status-box">
+            您目前的剩餘抽獎次數：<span id="chance-count">0</span> 次
+        </div>
+        
+        <button id="draw-btn" class="btn-draw" onclick="executeDraw()">即刻碰運氣</button>
+        <div id="loading-msg" class="loading">⏳ 系統即時開獎中，請稍候...</div>
+        
+        <div id="result" class="result-display"></div>
+    </div>
+</div>
+
+<script>
+    // ================== [ 系統連線設定已自動完美填入 ] ==================
+    const LIFF_ID = '2007048842-6GCYVWk0'; 
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbwnBBkMhmv1Ax9NM9CIOjSL4fbBlpXt6p1G0NItyXjugoikT5swDoG1FVZ02h5fD_LXyw/exec';  
+    // =========================================================================
+
+    let userProfile = {};
+
+    // 初始化 LINE LIFF 串接環境
+    async function initLiff() {
+        try {
+            await liff.init({ liffId: LIFF_ID });
+            if (!liff.isLoggedIn()) {
+                liff.login(); // 若沒登入引導登入
+            } else {
+                userProfile = await liff.getProfile(); // 取得用戶資訊
+                document.getElementById('auth-section').style.display = 'none';
+                document.getElementById('lottery-section').style.display = 'block';
+                document.getElementById('user-name').innerText = userProfile.displayName;
+                checkChances(); // 查詢次數
+            }
+        } catch (error) {
+            console.error('LIFF 初始化失敗', error);
+            alert('系統阻擋：請於 LINE App 行動裝置環境內開啟此網頁。');
+        }
+    }
+
+    // 呼叫 GAS 檢查該名客戶的賸餘抽獎次數
+    async function checkChances() {
+        try {
+            const response = await fetch(GAS_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'check',
+                    uid: userProfile.userId,
+                    displayName: userProfile.displayName
+                })
+            });
+            const data = await response.json();
+            if (data.success) {
+                document.getElementById('chance-count').innerText = data.remainChances;
+                if (data.remainChances <= 0) {
+                    document.getElementById('draw-btn').disabled = true;
+                } else {
+                    document.getElementById('draw-btn').disabled = false;
+                }
+            }
+        } catch (err) {
+            console.error('檢查次數連線失敗', err);
+        }
+    }
+
+    // 發送請求執行開獎邏輯
+    async function executeDraw() {
+        const drawBtn = document.getElementById('draw-btn');
+        const loadingMsg = document.getElementById('loading-msg');
+        const resultDiv = document.getElementById('result');
+        
+        // 進入開獎狀態，鎖定按鈕防連擊
+        drawBtn.disabled = true;
+        loadingMsg.style.display = 'block';
+        resultDiv.innerText = '';
+        resultDiv.style.background = 'none';
+
+        try {
+            const response = await fetch(GAS_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'draw',
+                    uid: userProfile.userId,
+                    displayName: userProfile.displayName
+                })
+            });
+            const data = await response.json();
+            
+            loadingMsg.style.display = 'none';
+            
+            if (data.success) {
+                // 處理開獎視覺呈現
+                if (data.result === "銘謝惠顧") {
+                    resultDiv.innerText = `😢 銘謝惠顧，下次好運就臨門！`;
+                    resultDiv.style.color = '#718096';
+                    resultDiv.style.background = '#f7fafc';
+                } else {
+                    resultDiv.innerText = `🎉 恭喜中獎：${data.result}！`;
+                    resultDiv.style.color = '#e53e3e';
+                    resultDiv.style.background = '#fff5f5';
+                }
+                
+                // 即時刷新畫面上的剩餘次數
+                document.getElementById('chance-count').innerText = data.remainChances;
+                
+                // 如果還有機會，解鎖按鈕讓客人可以繼續抽
+                if (data.remainChances > 0) drawBtn.disabled = false;
+            } else {
+                alert(data.msg);
+                resultDiv.innerText = data.msg;
+            }
+        } catch (error) {
+            loadingMsg.style.display = 'none';
+            drawBtn.disabled = false;
+            alert('網路不穩或伺服器超時，請重新再試一次');
+        }
+    }
+
+    window.onload = initLiff;
+</script>
+</body>
+</html>
