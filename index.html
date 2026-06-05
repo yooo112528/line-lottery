@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>燒酒海報抽獎活動</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/liff/2.21.4/sdk.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f8f9fa; text-align: center; padding: 20px; margin: 0; }
         .container { max-width: 450px; margin: 40px auto; background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
@@ -25,7 +24,7 @@
     <h1>燒酒海報抽獎活動</h1>
     
     <div id="auth-section">
-        <p style="color: #718096;" id="loading-text">正在連結 LINE 官方安全通道，請稍候...</p>
+        <p style="color: #718096;" id="loading-text">安全通道建立中，請稍候...</p>
     </div>
 
     <div id="lottery-section" style="display: none;">
@@ -49,8 +48,41 @@
 
     let userProfile = {};
 
-    function initLiff() {
-        // 直接使用 cdnjs 載入的標準官方工具
+    // 【終極安全鎖機制】：用程式動態去抓取連線庫，生出來之後才允許往下走
+    function loadLiffSDK(callback) {
+        var script = document.createElement('script');
+        script.type = 'text/javascript';
+        // 同時引入 cdnjs 作為最速緩衝
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/liff/2.21.4/sdk.js";
+        
+        script.onload = function() {
+            console.log("LINE SDK 載入成功");
+            callback();
+        };
+        
+        script.onerror = function() {
+            // 萬一 cdnjs 被擋，立刻自動切換回 LINE 官方原廠備用通道，雙層防護！
+            console.log("cdnjs 被阻擋，啟動官方備用通道...");
+            var backupScript = document.createElement('script');
+            backupScript.src = "https://static.liff.line.me/edge/2/sdk.js";
+            backupScript.onload = callback;
+            backupScript.onerror = function() {
+                document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">當前網路環境正在阻擋 LINE 伺服器，請切換手機 4G/5G 訊號再試。</span>';
+            };
+            document.head.appendChild(backupScript);
+        };
+        
+        document.head.appendChild(script);
+    }
+
+    // 真正的初始化核心流程
+    function startLiffProcess() {
+        if (typeof liff === "undefined") {
+            document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">大腦元件未就緒，正在重新整理連線...</span>';
+            window.location.reload();
+            return;
+        }
+
         liff.init({ liffId: LIFF_ID })
             .then(() => {
                 if (!liff.isLoggedIn()) {
@@ -62,17 +94,15 @@
                             document.getElementById('auth-section').style.display = 'none';
                             document.getElementById('lottery-section').style.display = 'block';
                             document.getElementById('user-name').innerText = userProfile.displayName;
-                            checkChances(); // 至試算表比對 ID
+                            checkChances();
                         })
                         .catch(err => {
-                            console.error(err);
-                            document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">LINE 身分驗證失敗，請重整網頁。</span>';
+                            document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">身分讀取失敗，請重新整理。</span>';
                         });
                 }
             })
             .catch((error) => {
-                console.error(error);
-                document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">安全通道初始化超時。</span>';
+                document.getElementById('loading-text').innerHTML = '<span style="color:#e53e3e">安全連線初始化失敗。</span>';
             });
     }
 
@@ -140,7 +170,10 @@
         });
     }
 
-    window.onload = initLiff;
+    // 網頁一載入，先強迫執行安全鎖機制，確保 SDK 完好才啟動核心
+    window.onload = function() {
+        loadLiffSDK(startLiffProcess);
+    };
 </script>
 </body>
 </html>
